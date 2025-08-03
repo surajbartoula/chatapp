@@ -2,6 +2,8 @@
 
 * Includes username and password for authentication.
 * Uses socket io for real time chat.
+* Database is SQLite
+* Tailwind css for styles
 
 Steps to run:
 * npm install - to install dependencies
