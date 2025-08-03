@@ -4,5 +4,5 @@
 * Uses socket io for real time chat.
 
 Steps to run:
-npm install - to install dependencies
-npm run dev - to run the server on localhost:3000
+* npm install - to install dependencies
+* npm run dev - to run the server on localhost:3000
