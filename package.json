@@ -1,0 +1,25 @@
+{
+  "name": "live-chat-app",
+  "version": "1.0.0",
+  "description": "A full-featured live chat application with direct messaging and user blocking",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": ["chat", "websocket", "socket.io", "fastify", "sqlite"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "fastify": "^4.24.3",
+    "@fastify/cors": "^8.4.0",
+    "@fastify/static": "^6.12.0",
+    "socket.io": "^4.7.2",
+    "sqlite3": "^5.1.6",
+    "sqlite": "^5.1.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Friend Chat App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6',
+                        secondary: '#6366f1'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <!-- Login/Register Modal -->
+    <div id="authModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-8 w-full max-w-md mx-4">
+            <h2 id="authTitle" class="text-2xl font-bold mb-6 text-center">Login</h2>
+            <form id="authForm" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Username</label>
+                    <input type="text" id="username" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary" required>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                    <input type="password" id="password" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary" required>
+                </div>
+                <button type="submit" id="authSubmit" class="w-full bg-primary text-white py-2 px-4 rounded-md hover:bg-blue-600 transition duration-200">
+                    Login
+                </button>
+            </form>
+            <div class="mt-4 text-center">
+                <button id="toggleAuth" class="text-primary hover:underline">
+                    Don't have an account? Register
+                </button>
+            </div>
+            <div id="authError" class="mt-4 text-red-600 text-sm text-center hidden"></div>
+        </div>
+    </div>
+
+    <!-- Main Chat Interface -->
+    <div id="chatInterface" class="hidden h-screen flex">
+        <!-- Sidebar -->
+        <div class="w-80 bg-white border-r border-gray-200 flex flex-col">
+            <!-- User Info -->
+            <div class="p-4 border-b border-gray-200 bg-primary text-white">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h3 id="currentUser" class="font-semibold"></h3>
+                        <p class="text-sm opacity-90">Online</p>
+                    </div>
+                    <button id="logoutBtn" class="px-3 py-1 bg-white bg-opacity-20 rounded hover:bg-opacity-30 transition">
+                        Logout
+                    </button>
+                </div>
+            </div>
+
+            <!-- Navigation Tabs -->
+            <div class="flex border-b border-gray-200">
+                <button id="friendsTab" class="flex-1 py-3 px-4 text-center bg-primary text-white font-medium relative">
+                    Friends
+                </button>
+                <button id="usersTab" class="flex-1 py-3 px-4 text-center text-gray-600 hover:bg-gray-50">
+                    Find Users
+                </button>
+                <button id="requestsTab" class="flex-1 py-3 px-4 text-center text-gray-600 hover:bg-gray-50 relative">
+                    Requests
+                    <span id="requestsBadge" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-2 py-1 hidden">0</span>
+                </button>
+            </div>
+
+            <!-- Friends Panel -->
+            <div id="friendsPanel" class="flex-1 overflow-y-auto">
+                <div class="p-4">
+                    <div class="flex justify-between items-center mb-4">
+                        <h4 class="font-medium text-gray-700">My Friends</h4>
+                        <button id="showBlockedBtn" class="text-sm text-red-600 hover:underline">
+                            Blocked
+                        </button>
+                    </div>
+                    <div id="friendsList" class="space-y-2"></div>
+                </div>
+            </div>
+
+            <!-- Users Panel -->
+            <div id="usersPanel" class="hidden flex-1 overflow-y-auto">
+                <div class="p-4">
+                    <h4 class="font-medium text-gray-700 mb-4">Find New Friends</h4>
+                    <input type="text" id="userSearch" placeholder="Search users..." 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary mb-4">
+                    <div id="allUsers" class="space-y-2"></div>
+                </div>
+            </div>
+
+            <!-- Friend Requests Panel -->
+            <div id="requestsPanel" class="hidden flex-1 overflow-y-auto">
+                <div class="p-4">
+                    <h4 class="font-medium text-gray-700 mb-4">Friend Requests</h4>
+                    <div id="friendRequestsList" class="space-y-3"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Chat Area -->
+        <div class="flex-1 flex flex-col">
+            <!-- Chat Header -->
+            <div id="chatHeader" class="p-4 bg-white border-b border-gray-200">
+                <div id="welcomeScreen" class="text-center">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-2">Welcome to Friend Chat!</h2>
+                    <p class="text-gray-600">Select a friend to start chatting or find new friends to connect with.</p>
+                </div>
+                <div id="chatTitle" class="hidden">
+                    <h2 id="chatUsername" class="text-xl font-semibold text-gray-800"></h2>
+                    <p id="chatStatus" class="text-sm text-gray-600"></p>
+                </div>
+            </div>
+
+            <!-- Messages Area -->
+            <div id="messagesArea" class="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
+                <div id="welcomeMessage" class="text-center text-gray-500 mt-20">
+                    <div class="text-6xl mb-4">💬</div>
+                    <p class="text-lg">Your conversations will appear here</p>
+                    <p class="text-sm mt-2">Add friends to start chatting!</p>
+                </div>
+            </div>
+
+            <!-- Typing Indicator -->
+            <div id="typingIndicator" class="px-4 py-2 text-sm text-gray-500 hidden">
+                <span class="typing-dots">Someone is typing...</span>
+            </div>
+
+            <!-- Message Input -->
+            <div id="messageInputArea" class="hidden p-4 bg-white border-t border-gray-200">
+                <div class="flex space-x-2">
+                    <input type="text" id="messageInput" placeholder="Type your message..." 
+                           class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
+                    <button id="sendButton" class="px-6 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 transition duration-200">
+                        Send
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Blocked Users Modal -->
+    <div id="blockedModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-semibold">Blocked Users</h3>
+                <button id="closeBlockedModal" class="text-gray-500 hover:text-gray-700">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            <div id="blockedUsersList" class="space-y-2 max-h-60 overflow-y-auto">
+                <!-- Blocked users will be listed here -->
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        class FriendChatApp {
+            constructor() {
+                this.socket = null;
+                this.currentUser = null;
+                this.currentChatUser = null;
+                this.isAuthenticated = false;
+                this.isLogin = true;
+                this.typingTimeout = null;
+                this.users = new Map();
+                this.friends = new Map();
+                this.blockedUsers = new Set();
+                this.friendRequests = [];
+                
+                this.initializeElements();
+                this.attachEventListeners();
+            }
+
+            initializeElements() {
+                // Auth elements
+                this.authModal = document.getElementById('authModal');
+                this.authForm = document.getElementById('authForm');
+                this.authTitle = document.getElementById('authTitle');
+                this.authSubmit = document.getElementById('authSubmit');
+                this.toggleAuth = document.getElementById('toggleAuth');
+                this.authError = document.getElementById('authError');
+                this.usernameInput = document.getElementById('username');
+                this.passwordInput = document.getElementById('password');
+
+                // Chat interface elements
+                this.chatInterface = document.getElementById('chatInterface');
+                this.currentUserSpan = document.getElementById('currentUser');
+                this.logoutBtn = document.getElementById('logoutBtn');
+                
+                // Tabs and panels
+                this.friendsTab = document.getElementById('friendsTab');
+                this.usersTab = document.getElementById('usersTab');
+                this.requestsTab = document.getElementById('requestsTab');
+                this.requestsBadge = document.getElementById('requestsBadge');
+                
+                this.friendsPanel = document.getElementById('friendsPanel');
+                this.usersPanel = document.getElementById('usersPanel');
+                this.requestsPanel = document.getElementById('requestsPanel');
+                
+                // Chat area
+                this.chatHeader = document.getElementById('chatHeader');
+                this.welcomeScreen = document.getElementById('welcomeScreen');
+                this.chatTitle = document.getElementById('chatTitle');
+                this.chatUsername = document.getElementById('chatUsername');
+                this.chatStatus = document.getElementById('chatStatus');
+                this.messagesArea = document.getElementById('messagesArea');
+                this.welcomeMessage = document.getElementById('welcomeMessage');
+                this.messageInput = document.getElementById('messageInput');
+                this.sendButton = document.getElementById('sendButton');
+                this.messageInputArea = document.getElementById('messageInputArea');
+                this.typingIndicator = document.getElementById('typingIndicator');
+                
+                // Lists
+                this.friendsList = document.getElementById('friendsList');
+                this.allUsers = document.getElementById('allUsers');
+                this.friendRequestsList = document.getElementById('friendRequestsList');
+                this.userSearch = document.getElementById('userSearch');
+                
+                // Blocked users modal
+                this.blockedModal = document.getElementById('blockedModal');
+                this.showBlockedBtn = document.getElementById('showBlockedBtn');
+                this.closeBlockedModal = document.getElementById('closeBlockedModal');
+                this.blockedUsersList = document.getElementById('blockedUsersList');
+            }
+
+            attachEventListeners() {
+                // Auth form
+                this.authForm.addEventListener('submit', (e) => this.handleAuth(e));
+                this.toggleAuth.addEventListener('click', () => this.toggleAuthMode());
+                
+                // Chat interface
+                this.logoutBtn.addEventListener('click', () => this.logout());
+                this.friendsTab.addEventListener('click', () => this.switchToFriendsPanel());
+                this.usersTab.addEventListener('click', () => this.switchToUsersPanel());
+                this.requestsTab.addEventListener('click', () => this.switchToRequestsPanel());
+                
+                // Message sending
+                this.sendButton.addEventListener('click', () => this.sendMessage());
+                this.messageInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        this.sendMessage();
+                    } else {
+                        this.handleTyping();
+                    }
+                });
+                
+                // Search functionality
+                this.userSearch.addEventListener('input', () => this.filterUsers());
+                
+                // Blocked users modal
+                this.showBlockedBtn.addEventListener('click', () => this.showBlockedModal());
+                this.closeBlockedModal.addEventListener('click', () => this.hideBlockedModal());
+            }
+
+            toggleAuthMode() {
+                this.isLogin = !this.isLogin;
+                if (this.isLogin) {
+                    this.authTitle.textContent = 'Login';
+                    this.authSubmit.textContent = 'Login';
+                    this.toggleAuth.textContent = "Don't have an account? Register";
+                } else {
+                    this.authTitle.textContent = 'Register';
+                    this.authSubmit.textContent = 'Register';
+                    this.toggleAuth.textContent = 'Already have an account? Login';
+                }
+                this.hideError();
+            }
+
+            async handleAuth(e) {
+                e.preventDefault();
+                const username = this.usernameInput.value.trim();
+                const password = this.passwordInput.value;
+
+                if (!username || !password) {
+                    this.showError('Please fill in all fields');
+                    return;
+                }
+
+                try {
+                    const endpoint = this.isLogin ? '/api/login' : '/api/register';
+                    const response = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username, password })
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        this.currentUser = data.user;
+                        this.isAuthenticated = true;
+                        this.hideAuthModal();
+                        this.showChatInterface();
+                        this.connectSocket();
+                        await this.loadInitialData();
+                    } else {
+                        this.showError(data.error);
+                    }
+                } catch (error) {
+                    this.showError('Connection failed. Please try again.');
+                }
+            }
+
+            connectSocket() {
+                this.socket = io();
+
+                this.socket.emit('authenticate', {
+                    userId: this.currentUser.id,
+                    username: this.currentUser.username
+                });
+
+                this.socket.on('authenticated', (data) => {
+                    console.log(data.message);
+                });
+
+                this.socket.on('new_message', (message) => {
+                    if (this.currentChatUser && 
+                        (message.sender_id === this.currentChatUser.id || message.recipient_id === this.currentChatUser.id)) {
+                        this.displayMessage(message);
+                    }
+                });
+
+                this.socket.on('friend_online', (data) => {
+                    this.updateFriendStatus(data.userId, true);
+                });
+
+                this.socket.on('friend_offline', (data) => {
+                    this.updateFriendStatus(data.userId, false);
+                });
+
+                this.socket.on('user_typing', (data) => {
+                    this.handleTypingIndicator(data);
+                });
+
+                this.socket.on('error', (data) => {
+                    alert(data.message);
+                });
+            }
+
+            async loadInitialData() {
+                await this.loadFriends();
+                await this.loadUsers();
+                await this.loadFriendRequests();
+                await this.loadBlockedUsers();
+            }
+
+            async loadFriends() {
+                try {
+                    const response = await fetch('/api/friends', {
+                        headers: { 'user-id': this.currentUser.id.toString() }
+                    });
+                    const friends = await response.json();
+                    
+                    this.friends.clear();
+                    friends.forEach(friend => {
+                        this.friends.set(friend.id, friend);
+                    });
+                    
+                    this.renderFriends();
+                } catch (error) {
+                    console.error('Failed to load friends:', error);
+                }
+            }
+
+            async loadUsers() {
+                try {
+                    const response = await fetch('/api/users', {
+                        headers: { 'user-id': this.currentUser.id.toString() }
+                    });
+                    const users = await response.json();
+                    
+                    this.users.clear();
+                    users.forEach(user => {
+                        this.users.set(user.id, user);
+                    });
+                    
+                    this.renderUsers();
+                } catch (error) {
+                    console.error('Failed to load users:', error);
+                }
+            }
+
+            async loadFriendRequests() {
+                try {
+                    const response = await fetch('/api/friend-requests', {
+                        headers: { 'user-id': this.currentUser.id.toString() }
+                    });
+                    this.friendRequests = await response.json();
+                    
+                    this.renderFriendRequests();
+                    this.updateRequestsBadge();
+                } catch (error) {
+                    console.error('Failed to load friend requests:', error);
+                }
+            }
+
+            async loadBlockedUsers() {
+                try {
+                    const response = await fetch('/api/blocked', {
+                        headers: { 'user-id': this.currentUser.id.toString() }
+                    });
+                    const blocked = await response.json();
+                    
+                    this.blockedUsers.clear();
+                    blocked.forEach(user => {
+                        this.blockedUsers.add(user.id);
+                    });
+                } catch (error) {
+                    console.error('Failed to load blocked users:', error);
+                }
+            }
+
+            async loadMessages(userId) {
+                try {
+                    const response = await fetch(`/api/messages/${userId}`, {
+                        headers: { 'user-id': this.currentUser.id.toString() }
+                    });
+                    
+                    if (response.ok) {
+                        const messages = await response.json();
+                        this.messagesArea.innerHTML = '';
+                        messages.forEach(message => this.displayMessage(message));
+                    } else {
+                        const error = await response.json();
+                        alert(error.error);
+                    }
+                } catch (error) {
+                    console.error('Failed to load messages:', error);
+                }
+            }
+
+            renderFriends() {
+                const friendsHtml = Array.from(this.friends.values())
+                    .map(friend => {
+                        const statusColor = friend.is_online ? 'bg-green-500' : 'bg-gray-400';
+                        const statusText = friend.is_online ? 'Online' : 'Offline';
+                        
+                        return `
+                            <div class="flex items-center justify-between p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer"
+                                 onclick="friendChatApp.startChat(${friend.id}, '${friend.username}')">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-3 h-3 ${statusColor} rounded-full"></div>
+                                    <div>
+                                        <span class="font-medium text-gray-800">${friend.username}</span>
+                                        <p class="text-xs text-gray-500">${statusText}</p>
+                                    </div>
+                                </div>
+                                <div class="flex space-x-2">
+                                    <button onclick="event.stopPropagation(); friendChatApp.blockUser(${friend.id})" 
+                                            class="px-3 py-1 text-xs bg-red-500 hover:bg-red-600 text-white rounded transition">
+                                        Block
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                
+                this.friendsList.innerHTML = friendsHtml || '<p class="text-sm text-gray-500 text-center py-4">No friends yet. Find some users to connect with!</p>';
+            }
+
+            renderUsers() {
+                const allUsersHtml = Array.from(this.users.values())
+                    .filter(user => !this.friends.has(user.id) && !this.blockedUsers.has(user.id))
+                    .map(user => {
+                        const statusColor = user.is_online ? 'bg-green-500' : 'bg-gray-400';
+                        const hasPendingRequest = this.friendRequests.some(req => req.sender_id === user.id);
+                        
+                        return `
+                            <div class="flex items-center justify-between p-3 rounded-lg border border-gray-200 hover:bg-gray-50">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-3 h-3 ${statusColor} rounded-full"></div>
+                                    <div>
+                                        <span class="font-medium text-gray-800">${user.username}</span>
+                                        <p class="text-xs text-gray-500">${user.is_online ? 'Online' : 'Offline'}</p>
+                                    </div>
+                                </div>
+                                <div class="flex space-x-2">
+                                    ${hasPendingRequest ? 
+                                        '<span class="px-3 py-1 text-xs bg-yellow-100 text-yellow-800 rounded">Request Sent</span>' :
+                                        `<button onclick="friendChatApp.sendFriendRequest(${user.id})" 
+                                                class="px-3 py-1 text-xs bg-primary text-white rounded hover:bg-blue-600 transition">
+                                            Add Friend
+                                        </button>`
+                                    }
+                                    <button onclick="friendChatApp.blockUser(${user.id})" 
+                                            class="px-3 py-1 text-xs bg-red-500 hover:bg-red-600 text-white rounded transition">
+                                        Block
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                
+                this.allUsers.innerHTML = allUsersHtml || '<p class="text-sm text-gray-500 text-center py-4">No users found</p>';
+            }
+
+            renderFriendRequests() {
+                const requestsHtml = this.friendRequests.map(request => `
+                    <div class="p-4 border border-gray-200 rounded-lg bg-gray-50">
+                        <div class="flex items-center justify-between mb-3">
+                            <div>
+                                <span class="font-medium text-gray-800">${request.sender_username}</span>
+                                <p class="text-xs text-gray-500">wants to be your friend</p>
+                            </div>
+                        </div>
+                        <div class="flex space-x-2">
+                            <button onclick="friendChatApp.acceptFriendRequest(${request.id})" 
+                                    class="flex-1 px-3 py-2 text-sm bg-green-500 text-white rounded hover:bg-green-600 transition">
+                                Accept
+                            </button>
+                            <button onclick="friendChatApp.rejectFriendRequest(${request.id})" 
+                                    class="flex-1 px-3 py-2 text-sm bg-gray-500 text-white rounded hover:bg-gray-600 transition">
+                                Decline
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+                
+                this.friendRequestsList.innerHTML = requestsHtml || '<p class="text-sm text-gray-500 text-center py-4">No friend requests</p>';
+            }
+
+            updateRequestsBadge() {
+                const count = this.friendRequests.length;
+                if (count > 0) {
+                    this.requestsBadge.textContent = count;
+                    this.requestsBadge.classList.remove('hidden');
+                } else {
+                    this.requestsBadge.classList.add('hidden');
+                }
+            }
+
+            filterUsers() {
+                const searchTerm = this.userSearch.value.toLowerCase();
+                const userElements = this.allUsers.children;
+                
+                Array.from(userElements).forEach(element => {
+                    const username = element.querySelector('.font-medium').textContent.toLowerCase();
+                    element.style.display = username.includes(searchTerm) ? 'flex' : 'none';
+                });
+            }
+
+            updateFriendStatus(userId, isOnline) {
+                const friend = this.friends.get(userId);
+                if (friend) {
+                    friend.is_online = isOnline;
+                    this.renderFriends();
+                    
+                    // Update chat status if currently chatting with this friend
+                    if (this.currentChatUser && this.currentChatUser.id === userId) {
+                        this.chatStatus.textContent = isOnline ? 'Online' : 'Offline';
+                    }
+                }
+            }
+
+            async sendFriendRequest(userId) {
+                try {
+                    const response = await fetch('/api/friend-request', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'user-id': this.currentUser.id.toString()
+                        },
+                        body: JSON.stringify({ receiverId: userId })
+                    });
+
+                    if (response.ok) {
+                        alert('Friend request sent!');
+                        this.renderUsers(); // Re-render to show "Request Sent" status
+                    } else {
+                        const error = await response.json();
+                        alert(error.error);
+                    }
+                } catch (error) {
+                    alert('Failed to send friend request');
+                }
+            }
+
+            async acceptFriendRequest(requestId) {
+                try {
+                    const response = await fetch('/api/friend-request/accept', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'user-id': this.currentUser.id.toString()
+                        },
+                        body: JSON.stringify({ requestId })
+                    });
+
+                    if (response.ok) {
+                        alert('Friend request accepted!');
+                        await this.loadInitialData(); // Reload all data
+                    } else {
+                        const error = await response.json();
+                        alert(error.error);
+                    }
+                } catch (error) {
+                    alert('Failed to accept friend request');
+                }
+            }
+
+            async rejectFriendRequest(requestId) {
+                try {
+                    const response = await fetch('/api/friend-request/reject', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'user-id': this.currentUser.id.toString()
+                        },
+                        body: JSON.stringify({ requestId })
+                    });
+
+                    if (response.ok) {
+                        alert('Friend request declined');
+                        await this.loadFriendRequests();
+                    } else {
+                        const error = await response.json();
+                        alert(error.error);
+                    }
+                } catch (error) {
+                    alert('Failed to reject friend request');
+                }
+            }
+
+            startChat(userId, username) {
+                const friend = this.friends.get(userId);
+                if (!friend) return;
+
+                this.currentChatUser = friend;
+                
+                // Show chat interface
+                this.welcomeScreen.classList.add('hidden');
+                this.chatTitle.classList.remove('hidden');
+                this.welcomeMessage.classList.add('hidden');
+                this.messageInputArea.classList.remove('hidden');
+                
+                // Update chat header
+                this.chatUsername.textContent = username;
+                this.chatStatus.textContent = friend.is_online ? 'Online' : 'Offline';
+                
+                // Load messages
+                this.loadMessages(userId);
+            }
+
+            displayMessage(message) {
+                const isOwn = message.sender_id === this.currentUser.id;
+                const messageTime = new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                
+                const messageHtml = `
+                    <div class="flex ${isOwn ? 'justify-end' : 'justify-start'}">
+                        <div class="max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${isOwn ? 'bg-primary text-white' : 'bg-white border border-gray-200'}">
+                            <p class="text-sm">${this.escapeHtml(message.content)}</p>
+                            <p class="text-xs ${isOwn ? 'text-blue-100' : 'text-gray-500'} mt-1">${messageTime}</p>
+                        </div>
+                    </div>
+                `;
+                
+                this.messagesArea.insertAdjacentHTML('beforeend', messageHtml);
+                this.messagesArea.scrollTop = this.messagesArea.scrollHeight;
+            }
+
+            sendMessage() {
+                if (!this.currentChatUser) return;
+                
+                const content = this.messageInput.value.trim();
+                if (!content) return;
+
+                this.socket.emit('send_message', {
+                    recipientId: this.currentChatUser.id,
+                    content
+                });
+
+                this.messageInput.value = '';
+                this.stopTyping();
+            }
+
+            handleTyping() {
+                if (!this.currentChatUser) return;
+
+                this.socket.emit('typing_start', { recipientId: this.currentChatUser.id });
+
+                clearTimeout(this.typingTimeout);
+                this.typingTimeout = setTimeout(() => {
+                    this.stopTyping();
+                }, 2000);
+            }
+
+            stopTyping() {
+                if (!this.currentChatUser) return;
+                this.socket.emit('typing_stop', { recipientId: this.currentChatUser.id });
+            }
+
+            handleTypingIndicator(data) {
+                if (data.userId === this.currentUser.id) return;
+                if (!this.currentChatUser || data.userId !== this.currentChatUser.id) return;
+
+                if (data.isTyping) {
+                    this.typingIndicator.textContent = `${data.username} is typing...`;
+                    this.typingIndicator.classList.remove('hidden');
+                } else {
+                    this.typingIndicator.classList.add('hidden');
+                }
+            }
+
+            switchToFriendsPanel() {
+                this.setActiveTab('friends');
+                this.friendsPanel.classList.remove('hidden');
+                this.usersPanel.classList.add('hidden');
+                this.requestsPanel.classList.add('hidden');
+            }
+
+            switchToUsersPanel() {
+                this.setActiveTab('users');
+                this.usersPanel.classList.remove('hidden');
+                this.friendsPanel.classList.add('hidden');
+                this.requestsPanel.classList.add('hidden');
+                this.renderUsers();
+            }
+
+            switchToRequestsPanel() {
+                this.setActiveTab('requests');
+                this.requestsPanel.classList.remove('hidden');
+                this.friendsPanel.classList.add('hidden');
+                this.usersPanel.classList.add('hidden');
+            }
+
+            setActiveTab(activeTab) {
+                // Reset all tabs
+                [this.friendsTab, this.usersTab, this.requestsTab].forEach(tab => {
+                    tab.classList.remove('bg-primary', 'text-white');
+                    tab.classList.add('text-gray-600', 'hover:bg-gray-50');
+                });
+                
+                // Set active tab
+                const tabElement = activeTab === 'friends' ? this.friendsTab : 
+                                 activeTab === 'users' ? this.usersTab : this.requestsTab;
+                tabElement.classList.add('bg-primary', 'text-white');
+                tabElement.classList.remove('text-gray-600', 'hover:bg-gray-50');
+            }
+
+            async blockUser(userId) {
+                try {
+                    const response = await fetch('/api/block', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'user-id': this.currentUser.id.toString()
+                        },
+                        body: JSON.stringify({ userId })
+                    });
+
+                    if (response.ok) {
+                        this.blockedUsers.add(userId);
+                        await this.loadInitialData(); // Reload to update all lists
+                        alert('User blocked successfully');
+                    }
+                } catch (error) {
+                    alert('Failed to block user');
+                }
+            }
+
+            async unblockUser(userId) {
+                try {
+                    const response = await fetch('/api/unblock', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'user-id': this.currentUser.id.toString()
+                        },
+                        body: JSON.stringify({ userId })
+                    });
+
+                    if (response.ok) {
+                        this.blockedUsers.delete(userId);
+                        await this.loadInitialData();
+                        alert('User unblocked successfully');
+                    }
+                } catch (error) {
+                    alert('Failed to unblock user');
+                }
+            }
+
+            showBlockedModal() {
+                const blockedUsersHtml = Array.from(this.users.values())
+                    .filter(user => this.blockedUsers.has(user.id))
+                    .map(user => `
+                        <div class="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+                            <span class="font-medium">${user.username}</span>
+                            <button onclick="friendChatApp.unblockUser(${user.id})" 
+                                    class="px-3 py-1 text-xs bg-green-500 text-white rounded hover:bg-green-600 transition">
+                                Unblock
+                            </button>
+                        </div>
+                    `).join('');
+                
+                this.blockedUsersList.innerHTML = blockedUsersHtml || '<p class="text-gray-500 text-center py-4">No blocked users</p>';
+                this.blockedModal.classList.remove('hidden');
+            }
+
+            hideBlockedModal() {
+                this.blockedModal.classList.add('hidden');
+            }
+
+            showError(message) {
+                this.authError.textContent = message;
+                this.authError.classList.remove('hidden');
+            }
+
+            hideError() {
+                this.authError.classList.add('hidden');
+            }
+
+            hideAuthModal() {
+                this.authModal.classList.add('hidden');
+            }
+
+            showChatInterface() {
+                this.chatInterface.classList.remove('hidden');
+                this.currentUserSpan.textContent = this.currentUser.username;
+            }
+
+            logout() {
+                if (this.socket) {
+                    this.socket.disconnect();
+                }
+                
+                this.currentUser = null;
+                this.currentChatUser = null;
+                this.isAuthenticated = false;
+                this.chatInterface.classList.add('hidden');
+                this.authModal.classList.remove('hidden');
+                
+                // Reset form
+                this.usernameInput.value = '';
+                this.passwordInput.value = '';
+                this.hideError();
+                
+                // Reset chat interface
+                this.welcomeScreen.classList.remove('hidden');
+                this.chatTitle.classList.add('hidden');
+                this.welcomeMessage.classList.remove('hidden');
+                this.messageInputArea.classList.add('hidden');
+                this.messagesArea.innerHTML = '<div id="welcomeMessage" class="text-center text-gray-500 mt-20"><div class="text-6xl mb-4">💬</div><p class="text-lg">Your conversations will appear here</p><p class="text-sm mt-2">Add friends to start chatting!</p></div>';
+            }
+
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+        }
+
+        // Initialize the chat app
+        window.friendChatApp = new FriendChatApp();
+    </script>
+
+    <style>
+        .typing-dots::after {
+            content: '';
+            animation: typing 1.4s infinite;
+        }
+
+        @keyframes typing {
+            0%, 60%, 100% { content: ''; }
+            30% { content: '.'; }
+            60% { content: '..'; }
+            90% { content: '...'; }
+        }
+
+        /* Custom scrollbar */
+        .overflow-y-auto::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .overflow-y-auto::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        .overflow-y-auto::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 2px;
+        }
+
+        .overflow-y-auto::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8;
+        }
+    </style>
+</body>
+</html>
